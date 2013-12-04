@@ -10,7 +10,7 @@
      (== rule-case 'var))
     (((lambda (,x) ,e) (,T1 -> ,T2))
      (!-o `((,x : ,T1) . ,gamma) e T2)
-     (== rule-case 'lambda))
+     (== rule-case 'abs))
     (((,e1 ,e2) ,T)
      (fresh (T1)
        (!-o gamma e1 `(,T1 -> ,T))

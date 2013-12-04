@@ -7,39 +7,39 @@
   (run 3 (q)
     (fresh (a b c proof)
       (== q `((,a ,b ,c) ,proof))
-      ((prooftree pluso-clause)
+      ((prooftree pluso-clause-case)
        `(pluso ,a ,b ,c) proof)))
-  '(((z _.0 _.0) (((pluso z _.0 _.0) <-- ())))
+  '(((z _.0 _.0) (((pluso z _.0 _.0) () <-- ())))
     (((s z) _.0 (s _.0))
      (((pluso (s z) _.0 (s _.0))
-       <--
-       (((pluso z _.0 _.0) <-- ())))))
+       () <--
+       (((pluso z _.0 _.0) ()  <-- ())))))
     (((s (s z)) _.0 (s (s _.0)))
      (((pluso (s (s z)) _.0 (s (s _.0)))
-       <--
+       ()  <--
        (((pluso (s z) _.0 (s _.0))
-         <--
-         (((pluso z _.0 _.0) <-- ())))))))))
+         () <--
+         (((pluso z _.0 _.0) ()  <-- ())))))))))
 
 (test-check "stlc-prooftree-no-eigen"
   (run 2 (q)
     (fresh (term proof)
       (== q `(,term ,proof))
-      ((prooftree !-o-clause)
+      ((prooftree !-o-clause-case)
        `(!-o () ,term (A -> A))
        proof)))
   '((((lambda (_.0) _.0)
       (((!-o () (lambda (_.0) _.0) (A -> A))
-        <--
-        (((!-o ((_.0 : A)) _.0 A) <-- ())))))
+        abs <--
+        (((!-o ((_.0 : A)) _.0 A) var <-- ())))))
      (sym _.0))
     (((lambda (_.0) ((lambda (_.1) _.1) _.0))
       (((!-o () (lambda (_.0) ((lambda (_.1) _.1) _.0)) (A -> A))
-        <--
+        abs <--
         (((!-o ((_.0 : A)) ((lambda (_.1) _.1) _.0) A)
-          <--
+          app <--
           (((!-o ((_.0 : A)) (lambda (_.1) _.1) (A -> A))
-            <--
-            (((!-o ((_.1 : A) (_.0 : A)) _.1 A) <-- ())))
-           ((!-o ((_.0 : A)) _.0 A) <-- ())))))))
+            abs <--
+            (((!-o ((_.1 : A) (_.0 : A)) _.1 A) var <-- ())))
+           ((!-o ((_.0 : A)) _.0 A) var <-- ())))))))
      (sym _.0 _.1))))
