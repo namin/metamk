@@ -69,3 +69,33 @@
            <--
            (((lookupo (y : _.0) ((x : (_.0 -> _.1)))) error))))))))
      #f)))
+
+(test-check "stlc-proofdebug-self-app"
+  (run* (q)
+    (fresh (term typ proof ok)
+      (== term '(lambda (x) (x x)))
+      (== q `(,term ,typ ,proof, ok))
+      ((proofdebug !-o-debug-clause-case)
+       `(!-o () ,term ,typ)
+       proof
+       ok)))
+  '(((lambda (x) (x x))
+     ((_.0 -> _.1) -> _.1)
+     (((!-o () (lambda (x) (x x)) ((_.0 -> _.1) -> _.1))
+       abs
+       <--
+       (((!-o ((x : (_.0 -> _.1))) (x x) _.1)
+         app
+         <--
+         (((!-o ((x : (_.0 -> _.1))) x (_.0 -> _.1))
+           var
+           <--
+           (((lookupo (x : (_.0 -> _.1)) ((x : (_.0 -> _.1))))
+             ()
+             <--
+             ())))
+          ((!-o ((x : (_.0 -> _.1))) x _.0)
+           var
+           <--
+           (((lookupo (x : _.0) ((x : (_.0 -> _.1)))) error))))))))
+     #f)))
