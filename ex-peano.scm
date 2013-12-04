@@ -1,7 +1,7 @@
 (load "meta.scm")
 
-(defrel (pluso)
-  pluso-clause
+(defrel
+  ((pluso-clause pluso))
   (pluso a b c)
   (conde
     ((== a 'z) (== b c))

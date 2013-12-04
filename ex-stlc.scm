@@ -1,8 +1,8 @@
 (load "meta.scm")
 (load "matche.scm")
 
-(defrel (!-o)
-  !-o-clause
+(defrel
+  ((!-o-clause !-o) (!-o-full-clause !-o lookupo ==))
   (!-o gamma expr type)
   (matche (expr type)
     ((,x ,T) (symbolo x) (lookupo `(,x : ,T) gamma))
@@ -17,4 +17,3 @@
   (matche (binding rho)
     (((,x : ,v) ((,x : ,v) . ,_)))
     (((,x : ,v) ((,y : ,_) . ,rho1)) (=/= x y) (lookupo binding rho1))))
-

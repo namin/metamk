@@ -2,11 +2,11 @@
 
 (define-syntax defrel
   (syntax-rules ()
-    ((_ (r* ...) cid (id a* ...) body)
+    ((_ ((cid* r* ...) ...) (id a* ...) body)
      (begin
        (define (id a* ...)
          body)
-       (define (cid head tail)
+       (define (cid* head tail)
          (define (cdr-down tail)
            (if (var? tail)
                tail
@@ -25,7 +25,7 @@
              (== head `(id ,a* ...))
              body)
            (project (tail)
-             (== (cdr-down tail) '())))
-         )
+             (== (cdr-down tail) '()))))
+         ...
        (void)))))
 
