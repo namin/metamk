@@ -17,3 +17,16 @@
   (matche (binding rho)
     (((,x : ,v) ((,x : ,v) . ,_)))
     (((,x : ,v) ((,y : ,_) . ,rho1)) (=/= x y) (lookupo binding rho1))))
+
+;; TODO: test it!
+(define (!-o-debug-clause head tail)
+  (conde
+    ((!-o-full-clause head tail))
+    ((== tail '())
+     (conde
+       ((fresh (binding rho)
+          (== `(lookupo ,binding ,rho) head)
+          (lookupo binding rho)))
+       ((fresh (x y)
+          (== `(== ,x ,y) head)
+          (== x y)))))))
