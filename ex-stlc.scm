@@ -1,6 +1,12 @@
 (load "meta.scm")
 (load "matche.scm")
 
+
+(define (lookupo binding rho)
+  (matche (binding rho)
+    (((,x : ,v) ((,x : ,v) . ,_)))
+    (((,x : ,v) ((,y : ,_) . ,rho1)) (=/= x y) (lookupo binding rho1))))
+
 (define (m== x y)
   (== x y))
 
@@ -26,11 +32,6 @@
 
 (define (!-o-clause-case head tail rule-case)
   (!-o-clause-i head tail rule-case))
-
-(define (lookupo binding rho)
-  (matche (binding rho)
-    (((,x : ,v) ((,x : ,v) . ,_)))
-    (((,x : ,v) ((,y : ,_) . ,rho1)) (=/= x y) (lookupo binding rho1))))
 
 (define (!-o-debug-clause-case head tail rule-case)
   (conde
