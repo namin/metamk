@@ -21,3 +21,11 @@
     ((lambda (_.0) ((lambda (_.1) _.1) _.0)) (sym _.0 _.1))
     (((lambda (_.0) _.0) (lambda (_.1) _.1)) (sym _.0 _.1))
     ((lambda (_.0) ((lambda (_.1) _.0) _.0)) (=/= ((_.0 _.1))) (sym _.0))))
+
+(test-check "stlc-vanilla-no-eigen"
+  (run 4 (q) ((vanilla !-o-clause)
+              `(!-o () ,q (A -> A))))
+  '(((lambda (_.0) _.0) (sym _.0))
+    ((lambda (_.0) ((lambda (_.1) _.1) _.0)) (sym _.0 _.1))
+    (((lambda (_.0) _.0) (lambda (_.1) _.1)) (sym _.0 _.1))
+    ((lambda (_.0) ((lambda (_.1) _.0) _.0)) (=/= ((_.0 _.1))) (sym _.0))))
