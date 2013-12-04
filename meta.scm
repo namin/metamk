@@ -1,12 +1,20 @@
 (load "mk.scm")
 
+(define-syntax fresh-if-needed
+  (syntax-rules ()
+    ((_ () g)
+     g)
+    ((_ (x* ...) g)
+     (fresh (x* ...) g))))
+
 (define-syntax defrel
   (syntax-rules ()
-    ((_ ((cid* r* ...) ...) (id a* ...) body)
+    ((_ ((cid* r* ...) ...) (id a* ...) (x* ...) body)
      (begin
        (define (id a* ...)
-         body)
-       (define (cid* head tail)
+         (fresh-if-needed (x* ...)
+           body))
+       (define (cid* head tail x* ...)
          (define (cdr-down tail)
            (if (var? tail)
                tail

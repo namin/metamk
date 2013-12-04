@@ -4,6 +4,7 @@
 (defrel
   ((!-o-clause !-o) (!-o-full-clause !-o lookupo ==))
   (!-o gamma expr type)
+  ()
   (matche (expr type)
     ((,x ,T) (symbolo x) (lookupo `(,x : ,T) gamma))
     (((lambda (,x) ,e) (,T1 -> ,T2))
