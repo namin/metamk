@@ -13,19 +13,19 @@
                (cdr-down (cdr tail))))
          (define (snoco tail el)
            (project (tail)
-                    (fresh (new-tail)
-                           (== (cdr-down tail) (cons el new-tail)))))
+             (fresh (new-tail)
+               (== (cdr-down tail) (cons el new-tail)))))
          (define r*
            (lambda args
              (snoco tail `(r* . ,args))))
          ...
          
          (fresh ()
-                (fresh (a* ...)
-                       (== head `(id ,a* ...))
-                       body)
-                (project (tail)
-                         (== (cdr-down tail) '())))
+           (fresh (a* ...)
+             (== head `(id ,a* ...))
+             body)
+           (project (tail)
+             (== (cdr-down tail) '())))
          )
        (void)))))
 
