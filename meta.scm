@@ -23,6 +23,9 @@
            (project (tail)
              (fresh (new-tail)
                (== (cdr-down tail) (cons el new-tail)))))
+         (define (closeo tail)
+           (project (tail)
+             (== (cdr-down tail) '())))
          (define r*
            (lambda args
              (snoco tail `(r* . ,args))))
@@ -32,8 +35,7 @@
            (fresh (a* ...)
              (== head `(id ,a* ...))
              body)
-           (project (tail)
-             (== (cdr-down tail) '()))))
+           (closeo tail)))
          ...
        (void)))))
 
