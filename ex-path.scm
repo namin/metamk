@@ -2,8 +2,8 @@
 (load "matche.scm")
 
 (defrel
-  ((patho-clause patho))
   (patho x y)
+  ((patho-clause patho))
   ()
   (conde
     [(edgeo x y)]

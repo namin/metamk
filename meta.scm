@@ -9,7 +9,7 @@
 
 (define-syntax defrel
   (syntax-rules ()
-    ((_ ((cid* r* ...) ...) (id a* ...) (x* ...) body)
+    ((_ (id a* ...) ((cid* r* ...) ...) (x* ...) body)
      (begin
        (define (id a* ...)
          (fresh-if-needed (x* ...)
