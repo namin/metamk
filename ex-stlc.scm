@@ -65,11 +65,13 @@
     (fresh (rule-case)
       (clause-i head tail rule-case))))
 (define !-o-clause (to-clause !-o-clause-i))
+(define !!-o-clause (to-clause !!-o-clause-i))
 
 (define (to-clause-case clause-i)
   (lambda (head tail rule-case)
     (clause-i head tail rule-case)))
 (define !-o-clause-case (to-clause-case !-o-clause-i))
+(define !!-o-clause-case (to-clause-case !!-o-clause-i))
 
 (define (to-debug-clause-case full-clause-i)
   (lambda (head tail rule-case)
@@ -85,3 +87,4 @@
             (== `(== ,x ,y) head)
             (== x y))))))))
 (define !-o-debug-clause-case (to-debug-clause-case !-o-full-clause-i))
+(define !!-o-debug-clause-case (to-debug-clause-case !!-o-full-clause-i))
