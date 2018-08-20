@@ -66,3 +66,25 @@
        (final-clause a b))
       ((== `(delta ,x ,y ,z) a)
        (delta-clause a b)))))
+
+(define (should-fold g r)
+  (fresh (x y)
+    (conde
+      ((== g `(accept2 ,x ,y))
+       (== r `(ab2 ,x ,y)))
+      ((== g `(accept ,x))
+       (== r `(ab ,x))))))
+(define (should-unfold g)
+  (fresh (x y z)
+    (conde
+      ((== g `(initial ,x)))
+      ((== g `(final ,x)))
+      ((== g `(delta ,x ,y ,z))))))
+
+(define (ndfa-pclause a b)
+  (fresh (x y z)
+    (conde
+      ((== `(accept ,x) a)
+       (accept-clause a b))
+      ((== `(accept2 ,x ,y) a)
+       (accept2-clause a b)))))
