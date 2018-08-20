@@ -15,8 +15,8 @@
          (conde
            ((fresh (a b ra rb rba rs)
               (== `(<- ,a ,b) g)
-              (appendo rb ra rba)
-              (appendo rba rs residues)
+              (== `(<- ,ra ,rb) rba)
+              (== (cons rba rs) residues)
               (solve* b rb)
               (solve* (list a) ra)
               (solve* gs rs)))

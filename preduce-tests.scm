@@ -41,9 +41,6 @@
       ((preduce* ndfa-clause)
        p
        q)))
-  ;; TODO -- we lost the structure of the program.
-  '(((ab2 _.0 q0)
-     (ab _.0)
-     (ab2 () q0)
-     (ab2 _.1 q1)
-     (ab2 (a . _.1) q0))))
+  '(((<- ((ab _.0)) ((ab2 _.0 q0)))
+     (<- ((ab2 () q0)) ())
+     (<- ((ab2 (a . _.1) q0)) ((ab2 _.1 q1))))))
