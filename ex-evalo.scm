@@ -3,12 +3,12 @@
 ;; interpreters.
 
 (defrel (evalo expr val)
-  ((evalo-clause ==))
+  ((evalo-clause eval-expo))
   ()
   (eval-expo expr initial-env val))
 
 (defrel (eval-expo expr env val)
-  ((eval-expo-clause ==))
+  ((eval-expo-clause eval-expo))
   ()
   (conde
     ((== `(quote ,val) expr)
@@ -77,7 +77,7 @@
 (define empty-env '())
 
 (defrel (lookupo x env t)
-  ((lookupo-clause ==))
+  ((lookupo-clause))
   ()
   (fresh (y b rest)
     (== `((,y . ,b) . ,rest) env)
@@ -92,7 +92,7 @@
        (lookupo x rest t)))))
 
 (defrel (not-in-envo x env)
-  ((not-in-envo-clause ==))
+  ((not-in-envo-clause))
   ()
   (conde
     ((== empty-env env))
@@ -102,7 +102,7 @@
        (not-in-envo x rest)))))
 
 (defrel (eval-listo expr env val)
-  ((eval-listo-clause ==))
+  ((eval-listo-clause))
   ()
   (conde
     ((== '() expr)
@@ -116,7 +116,7 @@
 ;; need to make sure lambdas are well formed.
 ;; grammar constraints would be useful here!!!
 (defrel (list-of-symbolso los)
-  ((list-of-symbolso-clause ==))
+  ((list-of-symbolso-clause))
   ()
   (conde
     ((== '() los))
@@ -126,7 +126,7 @@
        (list-of-symbolso d)))))
 
 (defrel (ext-env*o x* a* env out)
-  ((ext-env*o-clause ==))
+  ((ext-env*o-clause))
   ()
   (conde
     ((== '() x*) (== '() a*) (== env out))
@@ -138,7 +138,7 @@
        (ext-env*o dx* da* env2 out)))))
 
 (defrel (eval-primo prim-id a* val)
-  ((eval-primo-clause ==))
+  ((eval-primo-clause))
   ()
   (conde
     [(== prim-id 'cons)
@@ -182,7 +182,7 @@
          ((=/= '() v) (== #f val))))]))
 
 (defrel (prim-expo expr env val)
-  ((prim-expo-clause ==))
+  ((prim-expo-clause))
   ()
   (conde
     ((boolean-primo expr env val))
@@ -191,14 +191,14 @@
     ((if-primo expr env val))))
 
 (defrel (boolean-primo expr env val)
-  ((boolean-primo-clause ==))
+  ((boolean-primo-clause))
   ()
   (conde
     ((== #t expr) (== #t val))
     ((== #f expr) (== #f val))))
 
 (defrel (and-primo expr env val)
-  ((and-primo-clause ==))
+  ((and-primo-clause))
   ()
   (fresh (e*)
     (== `(and . ,e*) expr)
@@ -206,7 +206,7 @@
     (ando e* env val)))
 
 (defrel (ando e* env val)
-  ((ando-clause ==))
+  ((ando-clause))
   ()
   (conde
     ((== '() e*) (== #t val))
@@ -224,7 +224,7 @@
           (ando `(,e2 . ,e-rest) env val)))))))
 
 (defrel (or-primo expr env val)
-  ((or-primo-clause ==))
+  ((or-primo-clause))
   ()
   (fresh (e*)
     (== `(or . ,e*) expr)
@@ -232,7 +232,7 @@
     (oro e* env val)))
 
 (defrel (oro e* env val)
-  ((oro-clause ==))
+  ((oro-clause))
   ()
   (conde
     ((== '() e*) (== #f val))
@@ -250,7 +250,7 @@
           (oro `(,e2 . ,e-rest) env val)))))))
 
 (defrel (if-primo expr env val)
-  ((if-primo-clause ==))
+  ((if-primo-clause))
   ()
   (fresh (e1 e2 e3 t)
     (== `(if ,e1 ,e2 ,e3) expr)
@@ -271,7 +271,7 @@
                       . ,empty-env))
 
 (defrel (handle-matcho expr env val)
-  ((handle-matcho-clause ==))
+  ((handle-matcho-clause))
   ()
   (fresh (against-expr mval clause clauses)
     (== `(match ,against-expr ,clause . ,clauses) expr)
@@ -280,7 +280,7 @@
     (match-clauses mval `(,clause . ,clauses) env val)))
 
 (defrel (not-symbolo t)
-  ((not-symbol-clause ==))
+  ((not-symbol-clause))
   ()
   (conde
     ((== #f t))
@@ -291,7 +291,7 @@
        (== `(,a . ,d) t)))))
 
 (defrel (not-numbero t)
-  ((not-numbero-clause ==))
+  ((not-numbero-clause))
   ()
   (conde
     ((== #f t))
@@ -302,14 +302,14 @@
        (== `(,a . ,d) t)))))
 
 (defrel (self-eval-literalo t)
-  ((self-eval-literalo-clause ==))
+  ((self-eval-literalo-clause))
   ()
   (conde
     ((numbero t))
     ((booleano t))))
 
 (defrel (literalo t)
-  ((literalo-clause ==))
+  ((literalo-clause))
   ()
   (conde
     ((numbero t))
@@ -318,14 +318,14 @@
     ((== '() t))))
 
 (defrel (booleano t)
-  ((booleano-clause ==))
+  ((booleano-clause))
   ()
   (conde
     ((== #f t))
     ((== #t t))))
 
 (defrel (regular-env-appendo env1 env2 env-out)
-  ((regular-env-appnedo-clause ==))
+  ((regular-env-appnedo-clause))
   ()
   (conde
     ((== empty-env env1) (== env2 env-out))
@@ -335,7 +335,7 @@
        (regular-env-appendo rest env2 res)))))
 
 (defrel (match-clauses mval clauses env val)
-  ((match-clauses-clause ==))
+  ((match-clauses-clause))
   ()
   (fresh (p result-expr d penv)
     (== `((,p ,result-expr) . ,d) clauses)
@@ -348,7 +348,7 @@
        (match-clauses mval d env val)))))
 
 (defrel (var-p-match var mval penv penv-out)
-  ((var-p-match-clause ==))
+  ((var-p-match-clause))
   ()
   (fresh (val)
     (symbolo var)
@@ -361,7 +361,7 @@
        (not-in-envo var penv)))))
 
 (defrel (var-p-no-match var mval penv penv-out)
-  ((var-p-no-match-clause ==))
+  ((var-p-no-match-clause))
   ()
   (fresh (val)
     (symbolo var)
@@ -370,7 +370,7 @@
     (lookupo var penv val)))
 
 (defrel (p-match p mval penv penv-out)
-  ((p-match-clause ==))
+  ((p-match-clause))
   ()
   (conde
     ((self-eval-literalo p)
@@ -390,7 +390,7 @@
       (quasi-p-match quasi-p mval penv penv-out)))))
 
 (defrel (p-no-match p mval penv penv-out)
-  ((p-no-match-clause ==))
+  ((p-no-match-clause))
   ()
   (conde
     ((self-eval-literalo p)
@@ -417,7 +417,7 @@
       (quasi-p-no-match quasi-p mval penv penv-out)))))
 
 (defrel (quasi-p-match quasi-p mval penv penv-out)
-  ((quasi-p-match-clause ==))
+  ((quasi-p-match-clause))
   ()
   (conde
     ((== quasi-p mval)
@@ -434,7 +434,7 @@
        (quasi-p-match d v2 penv^ penv-out)))))
 
 (defrel (quasi-p-no-match quasi-p mval penv penv-out)
-  ((quasi-p-no-match-clause ==))
+  ((quasi-p-no-match-clause))
   ()
   (conde
     ((=/= quasi-p mval)
@@ -457,3 +457,11 @@
          ((quasi-p-no-match a v1 penv penv^))
          ((quasi-p-match a v1 penv penv^)
           (quasi-p-no-match d v2 penv^ penv-out)))))))
+
+(define (interp-clause a b)
+  (fresh (x y z)
+    (conde
+      ((== `(evalo ,x ,y) a)
+       (evalo-clause a b))
+      ((== `(eval-expo ,x ,y ,z) a)
+       (eval-expo-clause a b)))))

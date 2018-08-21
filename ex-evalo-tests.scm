@@ -21,7 +21,7 @@
 
 (test-check "evalo-vanilla"
   (run* (q)
-    ((vanilla evalo-clause)
+    ((vanilla interp-clause)
      `(evalo
        (letrec
            ((append
