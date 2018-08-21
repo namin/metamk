@@ -2,7 +2,6 @@
 (load "utils.scm")
 (load "vanilla.scm")
 (load "meta.scm")
-(load "matche.scm")
 (load "ex-ndfa.scm")
 (load "test-check.scm")
 
