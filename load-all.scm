@@ -1,4 +1,5 @@
 (load "mk.scm")
+(load "utils.scm")
 (load "meta.scm")
 (load "vanilla.scm")
 (load "tracer.scm")

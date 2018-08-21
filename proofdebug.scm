@@ -1,6 +1,3 @@
-(load "mk.scm")
-(load "utils.scm")
-
 (define (proofdebug* clause)
   (define (solve* goals proof ok)
     (conde

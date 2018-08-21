@@ -1,6 +1,3 @@
-(load "meta.scm")
-(load "matche.scm")
-
 (defrel
   (patho x y)
   ((patho-clause patho))

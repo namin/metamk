@@ -1,5 +1,3 @@
-(load "meta.scm")
-
 (defrel
   (pluso a b c)
   ((pluso-clause pluso))

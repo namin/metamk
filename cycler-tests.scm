@@ -1,4 +1,8 @@
+(load "mk.scm")
+(load "utils.scm")
 (load "cycler.scm")
+(load "meta.scm")
+(load "matche.scm")
 (load "ex-path.scm")
 (load "test-check.scm")
 

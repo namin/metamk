@@ -1,3 +1,6 @@
+(load "mk.scm")
+(load "meta.scm")
+(load "matche.scm")
 (load "ex-stlc.scm")
 (load "test-check.scm")
 

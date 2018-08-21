@@ -1,4 +1,8 @@
+(load "mk.scm")
+(load "utils.scm")
 (load "proofdebug.scm")
+(load "meta.scm")
+(load "matche.scm")
 (load "ex-peano.scm")
 (load "ex-stlc.scm")
 (load "test-check.scm")

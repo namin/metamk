@@ -5,4 +5,6 @@
 (load "prooftree-tests.scm")
 (load "proofdebug-tests.scm")
 (load "ex-stlc-tests.scm")
+(load "ex-ndfa-test.scm")
+(load "preduce-tests.scm")
 

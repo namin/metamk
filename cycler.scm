@@ -1,6 +1,3 @@
-(load "mk.scm")
-(load "utils.scm")
-
 (define (cycler* clause)
   (define (solve* goals trace-in trace-out)
     (conde

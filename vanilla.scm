@@ -1,6 +1,3 @@
-(load "mk.scm")
-(load "utils.scm")
-
 (define (vanilla* clause)
   (define (solve* goals)
     (conde

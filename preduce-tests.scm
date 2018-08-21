@@ -1,5 +1,7 @@
-(load "preduce.scm")
+(load "mk.scm")
+(load "meta.scm")
 (load "ex-ndfa.scm")
+(load "preduce.scm")
 (load "test-check.scm")
 
 (define (appendo xs ys zs)

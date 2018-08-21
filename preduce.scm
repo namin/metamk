@@ -1,8 +1,4 @@
-(load "mk.scm")
-
-;; from The Art of Prolog
-
-;; Inspired by Program 18.3
+;; Inspired by Program 18.3 of The Art of Prolog
 ;; A simple partial reduction system
 
 (define (preduce* clause)

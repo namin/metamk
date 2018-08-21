@@ -1,5 +1,3 @@
-(load "mk.scm")
-
 (define-syntax fresh-if-needed
   (syntax-rules ()
     ((_ () g)

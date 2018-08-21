@@ -1,6 +1,3 @@
-(load "meta.scm")
-(load "matche.scm")
-
 (defrel
   (!-o gamma expr type)
   ((!-o-clause-i !-o) (!-o-full-clause-i !-o lookupo))

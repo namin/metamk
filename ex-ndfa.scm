@@ -1,6 +1,3 @@
-(load "meta.scm")
-(load "matche.scm")
-
 ;; from The Art of Prolog
 
 ;; Program 17.1

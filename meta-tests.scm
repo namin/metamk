@@ -1,3 +1,4 @@
+(load "mk.scm")
 (load "meta.scm")
 (load "ex-peano.scm")
 (load "test-check.scm")
