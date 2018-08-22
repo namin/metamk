@@ -4,15 +4,6 @@
 (load "preduce.scm")
 (load "test-check.scm")
 
-(define (appendo xs ys zs)
-  (conde
-    ((== xs '())
-     (== ys zs))
-    ((fresh (x xr zr)
-       (== (cons x xr) xs)
-       (== (cons x zr) zs)
-       (appendo xr ys zr)))))
-
 (define ndfa-program-obj
   (run* (q)
     (fresh (a b)

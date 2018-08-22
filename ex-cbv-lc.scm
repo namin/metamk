@@ -64,3 +64,9 @@
     ((lookupo-clause a b))
     ((l==-clause a b))
     ((mk-clause a b))))
+
+(define (lc-pclause a b)
+  (conde
+    ((eval-expo-clause a b))
+    ((not-in-envo-clause a b))
+    ((lookupo-clause a b))))
