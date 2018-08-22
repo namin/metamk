@@ -1,40 +1,306 @@
-;; from github.com/miniKanren/miniKanren/blob/master/mk.scm
+;; faster-miniKanren code
 
-(define c->S (lambda (c) (car c)))
+(load "mk-chez.scm")
 
-(define c->D (lambda (c) (cadr c)))
+; Scope object.
+; Used to determine whether a branch has occured between variable
+; creation and unification to allow the set-var-val! optimization
+; in subst-add. Both variables and substitutions will contain a
+; scope. When a substitution flows through a conde it is assigned
+; a new scope.
 
-(define c->A (lambda (c) (caddr c)))
+; Creates a new scope that is not scope-eq? to any other scope
+(define new-scope
+  (lambda ()
+    (list 'scope)))
 
-(define c->T (lambda (c) (cadddr c)))
+; Scope used when variable bindings should always be made in the
+; substitution, as in disequality solving and reification. We
+; don't want to set-var-val! a variable when checking if a
+; disequality constraint holds!
+(define nonlocal-scope
+  (list 'non-local-scope))
 
-(define empty-c '(() () () ()))
+(define scope-eq? eq?)
 
-(define-syntax lambdag@
-  (syntax-rules (:)
-    ((_ (c) e) (lambda (c) e))
-    ((_ (c : S D A T) e)
-     (lambda (c)
-       (let ((S (c->S c))
-             (D (c->D c))
-             (A (c->A c))
-             (T (c->T c)))
-         e)))))
 
+; Logic variable object.
+; Contains:
+;   val - value for variable assigned by unification using
+;      set-var-val! optimization. unbound if not yet set or
+;      stored in substitution.
+;   scope - scope that the variable was created in.
+;   idx - unique numeric index for the variable. Used by the
+;      trie substitution representation.
+; Variable objects are compared by object identity.
+
+; The unique val for variables that have not yet been bound
+; to a value or are bound in the substitution
+(define unbound (list 'unbound))
+
+(define var
+  (let ((counter -1))
+    (lambda (scope)
+      (set! counter (+ 1 counter))
+      (vector unbound scope counter))))
+
+; Vectors are not allowed as terms, so terms that are vectors
+; are variables.
+(define var?
+  (lambda (x)
+    (vector? x)))
+
+(define var-eq? eq?)
+
+(define var-val
+  (lambda (x)
+    (vector-ref x 0)))
+
+(define set-var-val!
+  (lambda (x v)
+    (vector-set! x 0 v)))
+
+(define var-scope
+  (lambda (x)
+    (vector-ref x 1)))
+
+(define var-idx
+  (lambda (x)
+    (vector-ref x 2)))
+
+
+; Substitution object.
+; Contains:
+;   map - mapping of variables to values
+;   scope - scope at current program point, for set-var-val!
+;     optimization. Updated at conde. Included in the substitution
+;     because it is required to fully define the substitution
+;     and how it is to be extended.
+;
+; Implementation of the substitution map depends on the Scheme used,
+; as we need a map. See mk.rkt and mk-vicare.scm.
+
+(define subst
+  (lambda (mapping scope)
+    (cons mapping scope)))
+
+(define subst-map car)
+
+(define subst-scope cdr)
+
+(define subst-length
+  (lambda (S)
+    (subst-map-length (subst-map S))))
+
+(define subst-with-scope
+  (lambda (S new-scope)
+    (subst (subst-map S) new-scope)))
+
+(define empty-subst (subst empty-subst-map (new-scope)))
+
+(define subst-add
+  (lambda (S x v)
+    ; set-var-val! optimization: set the value directly on the
+    ; variable object if we haven't branched since its creation
+    ; (the scope of the variable and the substitution are the same).
+    ; Otherwise extend the substitution mapping.
+    (if (scope-eq? (var-scope x) (subst-scope S))
+      (begin
+        (set-var-val! x v)
+        S)
+      (subst (subst-map-add (subst-map S) x v) (subst-scope S)))))
+
+(define subst-lookup
+  (lambda (u S)
+    ; set-var-val! optimization.
+    ; Tried checking the scope here to avoid a subst-map-lookup
+    ; if it was definitely unbound, but that was slower.
+    (if (not (eq? (var-val u) unbound))
+      (var-val u)
+      (subst-map-lookup u (subst-map S)))))
+
+; Association object.
+; Describes an association mapping the lhs to the rhs. Returned by
+; unification to describe the associations that were added to the
+; substitution (whose representation is opaque) and used to represent
+; disequality constraints.
+
+(define lhs car)
+
+(define rhs cdr)
+
+; Constraint record object.
+;
+; Describes the constraints attached to a single variable.
+;
+; Contains:
+;   T - type constraint. 'symbolo 'numbero or #f to indicate
+;         no constraint
+;   D - list of disequality constraints. Each disequality is a list of
+;         associations. The constraint is violated if all associated
+;         variables are equal in the substitution simultaneously. D
+;         could contain duplicate constraints (created by distinct =/=
+;         calls). A given disequality constraint is only attached to
+;         one of the variables involved, as all components of the
+;         constraint must be violated to cause failure.
+;   A - list of absento constraints. Each constraint is a term.
+;         The list contains no duplicates.
+
+(define empty-c `(#f () ()))
+
+(define c-T
+  (lambda (c)
+    (car c)))
+
+(define c-D
+  (lambda (c)
+    (cadr c)))
+
+(define c-A
+  (lambda (c)
+    (caddr c)))
+
+(define c-with-T
+  (lambda (c T)
+    (list T (c-D c) (c-A c))))
+
+(define c-with-D
+  (lambda (c D)
+    (list (c-T c) D (c-A c))))
+
+(define c-with-A
+  (lambda (c A)
+    (list (c-T c) (c-D c) A)))
+
+; Constraint store object.
+; Mapping of representative variable to constraint record. Constraints
+; are always on the representative element and must be moved / merged
+; when that element changes.
+
+; Implementation depends on the Scheme used, as we need a map. See
+; mk.rkt and mk-vicare.scm.
+
+; State object.
+; The state is the value that is monadically passed through the search
+; Contains:
+;   S - the substitution
+;   C - the constraint store
+
+(define state
+  (lambda (S C)
+    (cons S C)))
+
+(define state-S (lambda (st) (car st)))
+(define state-C (lambda (st) (cdr st)))
+
+(define empty-state (state empty-subst empty-C))
+
+(define state-with-scope
+  (lambda (st new-scope)
+    (state (subst-with-scope (state-S st) new-scope) (state-C st))))
+
+; Unification
+
+(define walk
+  (lambda (u S)
+    (if (var? u)
+      (let ((val (subst-lookup u S)))
+        (if (eq? val unbound)
+          u
+          (walk val S)))
+      u)))
+
+(define occurs-check
+  (lambda (x v S)
+    (let ((v (walk v S)))
+      (cond
+        ((var? v) (var-eq? v x))
+        ((pair? v)
+         (or
+           (occurs-check x (car v) S)
+           (occurs-check x (cdr v) S)))
+        (else #f)))))
+
+(define ext-s-check
+  (lambda (x v S)
+    (cond
+      ((occurs-check x v S) (values #f #f))
+      (else (values (subst-add S x v) `((,x . ,v)))))))
+
+; Returns as values the extended substitution and a list of
+; associations added during the unification, or (values #f #f) if the
+; unification failed.
+;
+; Right now appends the list of added values from sub-unifications.
+; Alternatively could be threaded monadically, which could be faster
+; or slower.
+(define unify
+  (lambda (u v s)
+    (let ((u (walk u s))
+          (v (walk v s)))
+      (cond
+        ((eq? u v) (values s '()))
+        ((var? u) (ext-s-check u v s))
+        ((var? v) (ext-s-check v u s))
+        ((and (pair? u) (pair? v))
+         (let-values (((s added-car) (unify (car u) (car v) s)))
+           (if s
+             (let-values (((s added-cdr) (unify (cdr u) (cdr v) s)))
+               (values s (append added-car added-cdr)))
+             (values #f #f))))
+        ((equal? u v) (values s '()))
+        (else (values #f #f))))))
+
+(define unify*
+  (lambda (S+ S)
+    (unify (map lhs S+) (map rhs S+) S)))
+
+
+; Search
+
+; SearchStream: #f | Procedure | State | (Pair State (-> SearchStream))
+
+; SearchStream constructor types. Names inspired by the plus monad?
+
+; -> SearchStream
 (define mzero (lambda () #f))
 
-(define unit (lambdag@ (c) c))
+; c: State
+; -> SearchStream
+(define unit (lambda (c) c))
 
+; c: State
+; f: (-> SearchStream)
+; -> SearchStream
+;
+; f is a thunk to avoid unnecessary computation in the case that c is
+; the last answer needed to satisfy the query.
 (define choice (lambda (c f) (cons c f)))
 
-(define-syntax lambdaf@ 
-  (syntax-rules () ((_ () e) (lambda () e))))
+; e: SearchStream
+; -> (-> SearchStream)
+(define-syntax inc
+  (syntax-rules ()
+    ((_ e) (lambda () e))))
 
-(define-syntax inc 
-  (syntax-rules () ((_ e) (lambdaf@ () e))))
+; Goal: (State -> SearchStream)
 
-(define empty-f (lambdaf@ () (mzero)))
+; e: SearchStream
+; -> Goal
+(define-syntax lambdag@
+  (syntax-rules ()
+    ((_ (st) e) (lambda (st) e))))
 
+; Match on search streams. The state type must not be a pair with a
+; procedure in its cdr.
+;
+; (() e0)     failure
+; ((f) e1)    inc for interleaving. separate from success or failure
+;               to ensure it goes all the way to the top of the tree.
+; ((c) e2)    single result. Used rather than (choice c (inc (mzero)))
+;               to avoid returning to search a part of the tree that
+;               will inevitably fail.
+; ((c f) e3)  multiple results.
 (define-syntax case-inf
   (syntax-rules ()
     ((_ e (() e0) ((f^) e1) ((c^) e2) ((c f) e3))
@@ -45,689 +311,390 @@
          ((not (and (pair? c-inf)
                  (procedure? (cdr c-inf))))
           (let ((c^ c-inf)) e2))
-         (else (let ((c (car c-inf)) (f (cdr c-inf))) 
+         (else (let ((c (car c-inf)) (f (cdr c-inf)))
                  e3)))))))
 
-(define-syntax run
-  (syntax-rules ()
-    ((_ n (x) g0 g ...)
-     (take n
-       (lambdaf@ ()
-         ((fresh (x) g0 g ...
-            (lambdag@ (final-c)
-              (let ((z ((reify x) final-c)))
-                (choice z empty-f))))
-          empty-c))))))
-
-(define-syntax run*
-  (syntax-rules ()
-    ((_ (x) g ...) (run #f (x) g ...))))
-
-(define take
-  (lambda (n f)
-    (cond
-      ((and n (zero? n)) '())
-      (else
-       (case-inf (f) 
-         (() '())
-         ((f) (take n f))
-         ((c) (cons c '()))
-         ((c f) (cons c (take (and n (- n 1)) f))))))))
-
-(define-syntax fresh
-  (syntax-rules ()
-    ((_ (x ...) g0 g ...)
-     (lambdag@ (c)
-       (inc (let ((x (var 'x)) ...)
-              (bind* (g0 c) g ...)))))))
-
-(define-syntax bind*
-  (syntax-rules ()
-    ((_ e) e)
-    ((_ e g0 g ...) (bind* (bind e g0) g ...))))
-
-(define bind
-  (lambda (c-inf g)
-    (case-inf c-inf
-      (() (mzero))
-      ((f) (inc (bind (f) g)))
-      ((c) (g c))
-      ((c f) (mplus (g c) (lambdaf@ () (bind (f) g)))))))
-
+; c-inf: SearchStream
+;     f: (-> SearchStream)
+; -> SearchStream
+;
+; f is a thunk to avoid unnecesarry computation in the case that the
+; first answer produced by c-inf is enough to satisfy the query.
 (define mplus
   (lambda (c-inf f)
     (case-inf c-inf
       (() (f))
       ((f^) (inc (mplus (f) f^)))
       ((c) (choice c f))
-      ((c f^) (choice c (lambdaf@ () (mplus (f) f^)))))))
+      ((c f^) (choice c (inc (mplus (f) f^)))))))
 
-(define-syntax conde
+; c-inf: SearchStream
+;     g: Goal
+; -> SearchStream
+(define bind
+  (lambda (c-inf g)
+    (case-inf c-inf
+      (() (mzero))
+      ((f) (inc (bind (f) g)))
+      ((c) (g c))
+      ((c f) (mplus (g c) (inc (bind (f) g)))))))
+
+; Int, SearchStream -> (ListOf SearchResult)
+(define take
+  (lambda (n f)
+    (cond
+      ((and n (zero? n)) '())
+      (else
+       (case-inf (f)
+         (() '())
+         ((f) (take n f))
+         ((c) (cons c '()))
+         ((c f) (cons c
+                  (take (and n (- n 1)) f))))))))
+
+; -> SearchStream
+(define-syntax bind*
   (syntax-rules ()
-    ((_ (g0 g ...) (g1 g^ ...) ...)
-     (lambdag@ (c) (inc (mplus* (bind* (g0 c) g ...)
-                                (bind* (g1 c) g^ ...) ...))))))
+    ((_ e) e)
+    ((_ e g0 g ...) (bind* (bind e g0) g ...))))
 
+; -> SearchStream
 (define-syntax mplus*
   (syntax-rules ()
     ((_ e) e)
-    ((_ e0 e ...) (mplus e0 (lambdaf@ () (mplus* e ...))))))
+    ((_ e0 e ...) (mplus e0
+                    (inc (mplus* e ...))))))
 
-(define-syntax case-value
+; -> Goal
+(define-syntax fresh
   (syntax-rules ()
-    ((_ u ((t1) e0) ((at dt) e1) ((t2) e2))
-     (let ((t u))
-       (cond
-	 ((var? t) (let ((t1 t)) e0))
-	 ((pair? t) (let ((at (car t)) (dt (cdr t))) e1))
-	 (else (let ((t2 t)) e2)))))))
+    ((_ (x ...) g0 g ...)
+     (lambdag@ (st)
+       ; this inc triggers interleaving
+       (inc
+         (let ((scope (subst-scope (state-S st))))
+           (let ((x (var scope)) ...)
+             (bind* (g0 st) g ...))))))))
 
-(define make-tag-A
-  (lambda (tag pred)
+
+; -> Goal
+(define-syntax conde
+  (syntax-rules ()
+    ((_ (g0 g ...) (g1 g^ ...) ...)
+     (lambdag@ (st)
+       ; this inc triggers interleaving
+       (inc
+         (let ((st (state-with-scope st (new-scope))))
+           (mplus*
+             (bind* (g0 st) g ...)
+             (bind* (g1 st) g^ ...) ...)))))))
+
+(define-syntax run
+  (syntax-rules ()
+    ((_ n (q) g0 g ...)
+     (take n
+       (inc
+         ((fresh (q) g0 g ...
+            (lambdag@ (st)
+              (let ((st (state-with-scope st nonlocal-scope)))
+                (let ((z ((reify q) st)))
+                  (choice z (lambda () (lambda () #f)))))))
+          empty-state))))
+    ((_ n (q0 q1 q ...) g0 g ...)
+     (run n (x)
+       (fresh (q0 q1 q ...)
+         g0 g ...
+         (== `(,q0 ,q1 ,q ...) x))))))
+
+(define-syntax run*
+  (syntax-rules ()
+    ((_ (q0 q ...) g0 g ...) (run #f (q0 q ...) g0 g ...))))
+
+
+; Constraints
+; C refers to the constraint store map
+; c refers to an individual constraint record
+
+; Constraint: State -> #f | State
+;
+; (note that a Constraint is a Goal but a Goal is not a Constraint.
+;  Constraint implementations currently use this more restrained type.
+;  See `and-foldl` and `update-constraints`.)
+
+; Requirements for type constraints:
+; 1. Must be positive, not negative. not-pairo wouldn't work.
+; 2. Each type must have infinitely many possible values to avoid
+;      incorrectness in combination with disequality constraints,
+;      like: (fresh (x) (booleano x) (=/= x #t) (=/= x #f))
+(define type-constraint
+  (lambda (type-pred type-id)
     (lambda (u)
-      (lambdag@ (c : S D A T)
-        (case-value (walk u S)
-          ((x) (cond
-                 ((make-tag-A+ x tag pred c S D A T) =>
-                  unit)
-                 (else (mzero))))
-          ((au du) (mzero))
-          ((u) (cond
-                 ((pred u) (unit c))
-                 (else (mzero)))))))))
+      (lambdag@ (st)
+        (let ((term (walk u (state-S st))))
+          (cond
+            ((type-pred term) st)
+            ((var? term)
+             (let* ((c (lookup-c term st))
+                   (T (c-T c)))
+               (cond
+                 ((eq? T type-id) st)
+                 ((not T) (set-c term (c-with-T c type-id) st))
+                 (else #f))))
+            (else #f)))))))
 
-(define make-tag-A+
-  (lambda (u tag pred c S D A T)
-    (cond
-      ((ext-A (walk u S) tag pred S A) => 
-       (lambda (A+)  
-         (cond
-           ((null? A+) c)
-           (else (let ((D (subsume A+ D))
-                       (A (append A+ A)))
-                   (subsume-A S D A T))))))
-      (else #f))))
+(define symbolo (type-constraint symbol? 'symbolo))
+(define numbero (type-constraint number? 'numbero))
 
-(define subsume-A
-  (lambda (S D A T)
-    (let ((x* (rem-dups (map lhs A))))
-      (subsume-A+ x* S D A T))))
+(define (add-to-D st v d)
+  (let* ((c (lookup-c v st))
+         (c^ (c-with-D c (cons d (c-D c)))))
+    (set-c v c^ st)))
 
-(define subsume-A+
-  (lambda (x* S D A T)
-    (cond
-      ((null? x*) `(,S ,D ,A ,T))
-      (else (let ((x (car x*)))
-              (let ((D/T (update-D/T x S D A T)))
-                (let ((D (car D/T)) (T (cdr D/T)))
-                  `(,S ,D ,A ,T))))))))
-
-(define ext-A 
-  (lambda (x tag pred S A)
-    (cond
-      ((null? A) `((,x . (,tag . ,pred))))
-      (else
-       (let ((a (car A)) (A (cdr A)))
-         (let ((a-tag (pr->tag a)))
-           (cond
-             ((eq? (walk (lhs a) S) x)
-              (cond
-                ((tag=? a-tag tag) '())
-                (else #f)))
-             (else (ext-A x tag pred S A)))))))))
-
-(define symbolo (make-tag-A 'sym symbol?))
-
-(define numbero (make-tag-A 'num number?))
-
-(define booleano
-  (lambda (x)
-    (conde
-      ((== #f x))
-      ((== #t x)))))
-
-(define pr->tag (lambda (pr) (car (rhs pr))))
-
-(define pr->pred (lambda (pr) (cdr (rhs pr))))
-
-(define =/= 
-  (lambda (u v)
-    (lambdag@ (c : S D A T)
-      (cond
-        ((unify u v S) => (post-unify-=/= S D A T))
-        (else (unit c))))))
-
-(define post-unify-=/=
-  (lambda (S D A T)
-    (lambda (S+)
-      (cond
-        ((eq? S+ S) (mzero))
-        (else (let ((D+ (list (prefix-S S+ S))))
-                (let ((D+ (subsume A D+)))
-                  (let ((D+ (subsume T D+)))
-                    (let ((D (append D+ D)))
-                      (unit `(,S ,D ,A ,T)))))))))))
-
-(define prefix-S
-  (lambda (S+ S)
-    (cond
-      ((eq? S+ S) '())
-      (else (cons (car S+) (prefix-S (cdr S+) S))))))
-
-(define subsume
-  (lambda (A/T D)
-    (remp (lambda (d) (exists (subsumed-pr? A/T) d))
-      D)))
-
-(define subsumed-pr?
-  (lambda (A/T)
-    (lambda (pr-d)
-      (let ((u (rhs pr-d)))
+(define =/=*
+  (lambda (S+)
+    (lambdag@ (st)
+      (let-values (((S added) (unify* S+ (subst-with-scope
+                                           (state-S st)
+                                           nonlocal-scope))))
         (cond
-          ((var? u) #f)
+          ((not S) st)
+          ((null? added) #f)
           (else
-           (let ((pr (assq (lhs pr-d) A/T)))
-             (and pr
-               (let ((tag (pr->tag pr)))
-                 (cond
-                   ((and (tag? tag)
-                         (tag? u)
-                         (tag=? u tag)))
-                   (((pr->pred pr) u) #f)
-                   (else #t)))))))))))
+            ; Choose one of the disequality elements (el) to attach
+            ; the constraint to. Only need to choose one because
+            ; all must fail to cause the constraint to fail.
+            (let ((el (car added)))
+              (let ((st (add-to-D st (car el) added)))
+                (if (var? (cdr el))
+                  (add-to-D st (cdr el) added)
+                  st)))))))))
 
-(define == 
+(define =/=
   (lambda (u v)
-    (lambdag@ (c : S D A T)
-      (cond
-        ((unify u v S) =>
-         (post-unify-== c S D A T))
-        (else (mzero))))))
+    (=/=* `((,u . ,v)))))
 
-(define post-unify-==
-  (lambda (c S D A T)
-    (lambda (S+)
-      (cond
-        ((eq? S+ S) (unit c))
-        ((verify-D D S+) =>
-         (lambda (D)
-           (cond
-             ((post-verify-D S+ D A T) => unit)
-             (else (mzero)))))
-        (else (mzero))))))
+;; Generalized 'absento': 'term1' can be any legal term (old version
+;; of faster-miniKanren required 'term1' to be a ground atom).
+(define absento
+  (lambda (term1 term2)
+    (lambdag@ (st)
+      (let ((state (state-S st)))
+        (let ((term1 (walk term1 state))
+              (term2 (walk term2 state)))
+          (let ((st ((=/= term1 term2) st)))
+            (if st
+                (cond
+                  ((pair? term2)
+                   (let ((st^ ((absento term1 (car term2)) st)))
+                     (and st^ ((absento term1 (cdr term2)) st^))))            
+                  ((var? term2)
+                   (let* ((c (lookup-c term2 st))
+                          (A (c-A c)))
+                     (if (memv term1 A)
+                         st
+                         (let ((c^ (c-with-A c (cons term1 A))))
+                           (set-c term2 c^ st)))))
+                  (else st))
+                #f)))))))
 
-(define verify-D
-  (lambda (D S)
-    (cond
-      ((null? D) '())
-      ((verify-D (cdr D) S) =>
-       (lambda (D+)
-         (verify-D+ (car D) D+ S)))
-      (else #f))))
 
-(define verify-D+ 
-  (lambda (d D S)
-    (cond
-      ((unify* d S) =>
-       (lambda (S+)
-         (cond
-           ((eq? S+ S) #f)
-           (else (cons (prefix-S S+ S) D)))))
-      (else D))))
+; Fold lst with proc and initial value init. If proc ever returns #f,
+; return with #f immediately. Used for applying a series of
+; constraints to a state, failing if any operation fails.
+(define (and-foldl proc init lst)
+  (if (null? lst)
+    init
+    (let ([res (proc (car lst) init)])
+      (and res (and-foldl proc res (cdr lst))))))
 
-(define post-verify-D
-  (lambda (S D A T)
-    (cond
-      ((verify-A A S) =>
-       (post-verify-A S D T))
-      (else #f))))
+(define ==
+  (lambda (u v)
+    (lambdag@ (st)
+      (let-values (((S added) (unify u v (state-S st))))
+        (if S
+          (and-foldl update-constraints (state S (state-C st)) added)
+          #f)))))
 
-(define verify-A
-  (lambda (A S)
-    (cond
-      ((null? A) '())
-      ((verify-A (cdr A) S) =>
-       (lambda (A0)
-         (let ((u (walk (lhs (car A)) S))
-               (tag (pr->tag (car A)))
-               (pred (pr->pred (car A))))
-           (cond
-             ((var? u)
-              (cond
-                ((ext-A u tag pred S A0) =>
-                 (lambda (A+)
-                   (append A+ A0)))
-                (else #f)))
-             (else (and (pred u) A0))))))
-      (else #f))))
 
-(define post-verify-A
-  (lambda (S D T)
-    (lambda (A)
-      (let ((D (subsume A D)))
-        (cond
-          ((verify-T T S) => (post-verify-T S D A))
-          (else #f))))))
+; Not fully optimized. Could do absento update with fewer
+; hash-refs / hash-sets.
+(define update-constraints
+  (lambda (a st)
+    (let ([old-c (lookup-c (lhs a) st)])
+      (if (eq? old-c empty-c)
+        st
+        (let ((st (remove-c (lhs a) st)))
+         (and-foldl (lambda (op st) (op st)) st
+          (append
+            (if (eq? (c-T old-c) 'symbolo)
+              (list (symbolo (rhs a)))
+              '())
+            (if (eq? (c-T old-c) 'numbero)
+              (list (numbero (rhs a)))
+              '())
+            (map (lambda (atom) (absento atom (rhs a))) (c-A old-c))
+            (map (lambda (d) (=/=* d)) (c-D old-c)))))))))
 
-(define verify-T 
-  (lambda (T S)
-    (cond
-      ((null? T) '())
-      ((verify-T (cdr T) S) => (verify-T+ (lhs (car T)) T S))
-      (else #f))))
 
-(define verify-T+
-  (lambda (x T S)
-    (lambda (T0)
-      (let ((tag (pr->tag (car T)))
-            (pred (pr->pred (car T))))
-	(case-value (walk x S)
-	  ((x) (cond
-                 ((ext-T+ x tag pred S T0) =>
-                  (lambda (T+) (append T+ T0)))
-                 (else #f)))
-          ((au du) (cond
-                     (((verify-T+ au T S) T0) =>
-                      (verify-T+ du T S))
-                     (else #f)))
-          ((u) (and (pred u) T0)))))))
-
-(define post-verify-T
-  (lambda (S D A)
-    (lambda (T)
-      (subsume-T T S (subsume T D) A '()))))
-
-(define subsume-T  
-  (lambda (T+ S D A T)
-    (let ((x* (rem-dups (map lhs A))))
-      (subsume-T+ x* T+ S D A T))))
-
-(define subsume-T+ 
-  (lambda (x* T+ S D A T)
-    (cond
-      ((null? x*)
-       (let ((T (append T+ T)))
-         `(,S ,D ,A ,T)))
-      (else
-       (let ((x (car x*)) (x* (cdr x*)))
-         (let ((D/T (update-D/T x S D A T+)))
-           (let ((D (car D/T)) (T+ (cdr D/T)))
-             (subsume-T+ x* T+ S D A T))))))))
-
-(define update-D/T
-  (lambda (x S D A T)
-    (cond
-      ((null? A)
-       (let ((T (remp (lambda (t)
-                        (eq? (lhs t) x))
-                  T)))
-         `(,D . ,T)))
-      (else
-       (let ((a (car A)))
-         (cond
-           ((and (eq? (lhs a) x)
-              (or (tag=? (pr->tag a) 'sym)   
-                  (tag=? (pr->tag a) 'num)))
-            (update-D/T+ x '() S D T))
-           (else
-	    (update-D/T x S D (cdr A) T))))))))
-
-(define update-D/T+
-  (lambda (x T+ S D T)
-    (cond
-      ((null? T)
-       `(,D . ,T+))
-      (else
-       (let ((t (car T))
-             (T (cdr T)))
-         (cond
-           ((eq? (lhs t) x)
-            (let ((D (ext-D x (pr->tag t) D S)))
-              (update-D/T+ x T+ S D T)))
-           (else
-            (let ((T+ (cons t T+)))
-              (update-D/T+ x T+ S D T)))))))))
-
-(define ext-D
-  (lambda (x tag D S)
-    (cond
-      ((exists 
-         (lambda (d)
-           (and (null? (cdr d))
-             (let ((y (lhs (car d)))
-                   (u (rhs (car d))))
-               (and
-                 (eq? (walk y S) x)
-                 (tag? u)
-                 (tag=? u tag))))) 
-         D)
-       D)
-      (else (cons `((,x . ,tag)) D)))))
-
-(define absento 
-  (lambda (tag u)
-    (cond
-      ((not (tag? tag)) fail)
-      (else
-       (lambdag@ (c : S D A T)
-         (cond
-           ((absento+ u tag c S D A T) => unit)
-           (else (mzero))))))))
-
-(define absento+  
-  (lambda (u tag c S D A T)
-    (case-value (walk u S)
-      ((x)
-       (let ((T+ (ext-T x tag S T)))
-         (cond
-           ((null? T+) c)
-           (else
-            (let ((D (subsume T+ D)))
-              (subsume-T T+ S D A T))))))
-      ((au du)
-       (let ((c (absento+ au tag c S D A T)))
-         (and c
-           (let ((S (c->S c))
-                 (D (c->D c))
-                 (A (c->A c))
-                 (T (c->T c)))
-             (absento+ du tag c S D A T)))))
-      ((u)
-       (cond
-         ((and (tag? u) (tag=? u tag)) #f)
-         (else c))))))
-
-(define ext-T 
-  (lambda (x tag S T)
-    (cond
-      ((null? T)
-       (let ((pred (make-pred-T tag)))
-         `((,x . (,tag . ,pred)))))
-      (else
-       (let ((t (car T)) (T (cdr T)))
-         (let ((t-tag (pr->tag t)))
-           (cond
-             ((eq? (walk (lhs t) S) x)
-              (cond
-                ((tag=? t-tag tag) '())
-                (else (ext-T x tag S T))))
-             ((tag=? t-tag tag)
-              (let ((t-pred (pr->pred t)))
-                (ext-T+ x tag t-pred S T)))
-             (else (ext-T x tag S T)))))))))
-
-(define ext-T+ 
-  (lambda (x tag pred S T)
-    (cond
-      ((null? T) `((,x . (,tag . ,pred))))
-      (else
-       (let ((t (car T)))
-         (let ((t-tag (pr->tag t)))
-           (cond
-             ((eq? (walk (lhs t) S) x)
-              (cond
-                ((tag=? t-tag tag) '())
-                (else
-                 (ext-T+ x tag pred S
-                   (cdr T)))))
-             (else
-              (ext-T+ x tag pred S
-                (cdr T))))))))))
-
-(define make-pred-T
-  (lambda (tag)
-    (lambda (x)
-      (not (and (tag? x) (tag=? x tag))))))
-
-(define tag?
-  (lambda (tag)
-    (symbol? tag)))
-
-(define tag=?
-  (lambda (tag1 tag2)
-    (eq? tag1 tag2)))
-
-(define var (lambda (dummy) (vector dummy)))
-
-(define var? (lambda (x) (vector? x)))
-
-(define rem-dups
-  (lambda (x*)
-    (cond
-      ((null? x*) '())
-      ((memq (car x*) (cdr x*))
-       (rem-dups (cdr x*)))
-      (else (cons (car x*)
-              (rem-dups (cdr x*)))))))
-
-(define lhs (lambda (pr) (car pr)))
-
-(define rhs (lambda (pr) (cdr pr)))
-
-(define succeed (== #f #f))
-
-(define fail (== #f #t))
-
-(define walk
-  (lambda (u S)
-    (cond
-      ((and (var? u) (assq u S)) =>
-       (lambda (pr) (walk (rhs pr) S)))
-      (else u))))
-
-(define unify
-  (lambda (u v S)
-    (let ((u (walk u S)) (v (walk v S)))
-      (cond
-        ((and (pair? u) (pair? v))
-         (let ((S (unify (car u) (car v) S)))
-           (and S (unify (cdr u) (cdr v) S))))
-        (else (unify-nonpair u v S))))))
-
-(define unify-nonpair
-  (lambda (u v S)
-    (cond
-      ((eq? u v) S)
-      ((var? u) (ext-S u v S))
-      ((var? v) (ext-S v u S))
-      ((equal? u v) S)
-      (else #f))))
-
-(define ext-S
-  (lambda (x v S)
-    (case-value v
-      ((y) (cons `(,x . ,y) S))
-      ((au du) (cond
-                 ((occurs-check x v S) #f)
-                 (else (cons `(,x . ,v) S))))
-      ((v) (cons `(,x . ,v) S)))))
-
-(define occurs-check
-  (lambda (x v S)
-    (case-value (walk v S)
-      ((y) (eq? y x))
-      ((av dv) (or (occurs-check x av S)
-                   (occurs-check x dv S)))
-      ((v) #f))))
+; Reification
 
 (define walk*
   (lambda (v S)
-    (case-value (walk v S)
-      ((x) x)
-      ((av dv)
-       (cons (walk* av S) (walk* dv S)))
-      ((v) v))))
+    (let ((v (walk v S)))
+      (cond
+        ((var? v) v)
+        ((pair? v)
+         (cons (walk* (car v) S) (walk* (cdr v) S)))
+        (else v)))))
+
+(define vars
+  (lambda (term acc)
+    (cond
+      ((var? term) (cons term acc))
+      ((pair? term)
+       (vars (cdr term) (vars (car term) acc)))
+      (else acc))))
+
+(define-syntax project
+  (syntax-rules ()
+    ((_ (x ...) g g* ...)
+     (lambdag@ (st)
+       (let ((x (walk* x (state-S st))) ...)
+         ((fresh () g g* ...) st))))))
+
+
+; Create a constraint store of the old representation from a state
+; object, so that we can use the old reifier. Only accumulates
+; constraints related to the variable being reified which makes things
+; a bit faster.
+(define c-from-st
+  (lambda (st x)
+    (let ((vs (vars (walk* x (state-S st)) '())))
+      (foldl
+        (lambda (v c-store)
+          (let ((c (lookup-c v st)))
+            (let ((S (state-S st))
+                  (D (c->D c-store))
+                  (Y (c->Y c-store))
+                  (N (c->N c-store))
+                  (T (c->T c-store))
+                  (T^ (c-T c))
+                  (D^ (c-D c))
+                  (A^ (c-A c)))
+              `(,S
+                 ,(append D^ D)
+                 ,(if (eq? T^ 'symbolo)
+                    (cons v Y)
+                    Y)
+                 ,(if (eq? T^ 'numbero)
+                    (cons v N)
+                    N)
+                 ,(append
+                    (map (lambda (atom) (cons atom v)) A^)
+                    T)))))
+        `(,(state-S st) () () () ())
+        (remove-duplicates vs)))))
+
+(define reify
+  (lambda (x)
+    (lambda (st)
+      (let ((c (c-from-st st x)))
+        (let ((c (cycle c)))
+          (let* ((S (c->S c))
+                 (D (walk* (c->D c) S))
+                 (Y (walk* (c->Y c) S))
+                 (N (walk* (c->N c) S))
+                 (T (walk* (c->T c) S)))
+            (let ((v (walk* x S)))
+              (let ((R (reify-S v (subst empty-subst-map
+                                         nonlocal-scope))))
+                (reify+ v R
+                        (let ((D (remp
+                                   (lambda (d)
+                                     (let ((dw (walk* d S)))
+                                       (anyvar? dw R)))
+                                   (rem-xx-from-d c))))
+                          (rem-subsumed D))
+                        (remp
+                          (lambda (y) (var? (walk y R)))
+                          Y)
+                        (remp
+                          (lambda (n) (var? (walk n R)))
+                          N)
+                        (remp (lambda (t)
+                                (anyvar? t R)) T))))))))))
+
+
+; Bits from the old constraint implementation, still used for
+; reification.
+
+; In this part of the code, c refers to the
+; old constraint store with components:
+; S - substitution
+; D - disequality constraints
+; Y - symbolo
+; N - numbero
+; T - absento
+
+(define c->S (lambda (c) (car c)))
+(define c->D (lambda (c) (cadr c)))
+(define c->Y (lambda (c) (caddr c)))
+(define c->N (lambda (c) (cadddr c)))
+(define c->T (lambda (c) (cadddr (cdr c))))
+
+; Syntax for reification goal objects using the old constraint store
+(define-syntax lambdar@
+  (syntax-rules (:)
+    ((_ (c) e) (lambda (c) e))
+    ((_ (c : S D Y N T) e)
+     (lambda (c)
+       (let ((S (c->S c))
+             (D (c->D c))
+             (Y (c->Y c))
+             (N (c->N c))
+             (T (c->T c)))
+         e)))))
+
+(define tagged?
+  (lambda (S Y y^)
+    (exists (lambda (y) (eqv? (walk y S) y^)) Y)))
+
+(define untyped-var?
+  (lambda (S Y N t^)
+    (let ((in-type? (lambda (y) (var-eq? (walk y S) t^))))
+      (and (var? t^)
+           (not (exists in-type? Y))
+           (not (exists in-type? N))))))
 
 (define reify-S
   (lambda (v S)
-    (case-value (walk v S)
-      ((x) (let ((n (length S)))
-             (let ((name (reify-name n)))
-               (cons `(,x . ,name) S))))
-      ((av dv) (let ((S (reify-S av S)))
-                 (reify-S dv S)))
-      ((v) S))))
+    (let ((v (walk v S)))
+      (cond
+        ((var? v)
+         (let ((n (subst-length S)))
+           (let ((name (reify-name n)))
+             (subst-add S v name))))
+        ((pair? v)
+         (let ((S (reify-S (car v) S)))
+           (reify-S (cdr v) S)))
+        (else S)))))
 
 (define reify-name
   (lambda (n)
     (string->symbol
       (string-append "_" "." (number->string n)))))
 
-(define reify
-  (lambda (x)
-    (lambda (c)
-      (let ((S (c->S c)) (D (c->D c))
-            (A (c->A c)) (T (c->T c)))
-        (let ((v (walk* x S)))
-          (let ((S (reify-S v '())))
-            (reify+ v S
-              (let ((D (remp
-                         (lambda (d) (anyvar? d S))
-                         D)))
-                (rem-subsumed D))
-              (remp
-                (lambda (a)
-                  (var? (walk (lhs a) S)))
-                A)
-              (remp
-                (lambda (t)
-                  (var? (walk (lhs t) S)))
-                T))))))))
-
-(define reify+ 
-  (lambda (v S D A T)
-    (let ((D (subsume A D)))
-      (let ((A (map (lambda (a)
-                      (let ((x (lhs a))
-                            (tag (pr->tag a)))
-                        `(,x . ,tag)))
-                    A))
-            (T (map (lambda (t)
-                      (let ((x (lhs t))
-                            (tag (pr->tag t)))
-                        `(,x . ,tag)))
-                    T)))
-        (form (walk* v S)
-              (walk* D S)
-              (walk* A S)
-              (rem-subsumed-T (walk* T S)))))))
-
-(define form
-  (lambda (v D A T)
-    (let ((fd (drop-dot-D (sorter (map sorter D))))
-          (fa (sorter (map sort-part (partition* A))))
-          (ft (drop-dot-T (sorter T))))
-      (let ((fb (append ft fa)))
-        (cond
-          ((and (null? fd) (null? fb)) v)
-          ((null? fd) `(,v . ,fb))
-          ((null? fb) `(,v . ((=/= . ,fd))))
-          (else `(,v (=/= . ,fd) . ,fb)))))))
-
-(define drop-dot-D
-  (lambda (D)
-    (map (lambda (d)
-           (map (lambda (pr)
-                  (let ((x (lhs pr))
-                        (u (rhs pr)))
-                    `(,x ,u)))
-                d))
-         D)))
-
-(define drop-dot-T
-  (lambda (T)
+(define drop-dot
+  (lambda (X)
     (map (lambda (t)
-           (let ((x (lhs t))
-                 (tag (rhs t)))
-             `(absent ,tag ,x)))
-         T)))
+           (let ((a (lhs t))
+                 (d (rhs t)))
+             `(,a ,d)))
+         X)))
 
-(define sorter (lambda (ls) (sort lex<=? ls)))
-
-(define sort-part
-  (lambda (pr)
-    (let ((tag (car pr))
-          (x* (sorter (cdr pr))))
-      `(,tag . ,x*))))
-
-(define anyvar?
-  (lambda (u S)
-    (case-value u
-      ((x) (var? (walk x S)))
-      ((au du) (or (anyvar? au S)
-                   (anyvar? du S)))
-      ((u) #f))))
-
-(define rem-subsumed
-  (lambda (D)
-    (let loop ((D D) (D+ '()))
-      (cond
-        ((null? D) D+)
-        ((or (subsumed? (car D) (cdr D))
-             (subsumed? (car D) D+))
-         (loop (cdr D) D+))
-        (else (loop (cdr D)
-                (cons (car D) D+)))))))
-
-(define subsumed?
-  (lambda (d D)
-    (cond
-      ((null? D) #f)
-      (else (let ((d^ (unify* (car D) d)))
-              (or (and d^ (eq? d^ d))
-                  (subsumed? d (cdr D))))))))
-
-(define rem-subsumed-T
-  (lambda (T)
-    (let loop ((T T) (T^ '()))
-      (cond
-        ((null? T) T^)
-        (else
-         (let ((x (lhs (car T)))
-               (tag (rhs (car T))))
-           (cond
-             ((or (subsumed-T? x tag (cdr T))
-                  (subsumed-T? x tag T^))
-              (loop (cdr T) T^))
-             (else (loop (cdr T)
-                     (cons (car T) T^))))))))))
-
-(define subsumed-T?
-  (lambda (x tag1 T)
-    (cond
-      ((null? T) #f)
-      (else
-       (let ((y (lhs (car T)))
-             (tag2 (rhs (car T))))
-         (or
-           (and (eq? y x) (tag=? tag2 tag1))
-           (subsumed-T? x tag1 (cdr T))))))))
-
-(define unify*
-  (lambda (S+ S)
-    (unify (map lhs S+) (map rhs S+) S)))
-
-(define part
-  (lambda (tag A x* y*)
-    (cond
-     ((null? A)
-      (cons `(,tag . ,x*) (partition* y*)))
-     ((tag=? (rhs (car A)) tag)
-      (let ((x (lhs (car A))))
-        (let ((x* (cond
-                    ((memq x x*) x*)
-                    (else (cons x x*)))))
-          (part tag (cdr A) x* y*))))
-     (else
-      (let ((y* (cons (car A) y*)))
-        (part tag (cdr A) x* y*))))))
-
-(define partition*
-  (lambda (A)
-    (cond
-      ((null? A) '())
-      (else
-       (part (rhs (car A)) A '() '())))))
+(define sorter
+  (lambda (ls)
+    (list-sort lex<=? ls)))
 
 (define lex<=?
   (lambda (x y)
@@ -738,49 +705,460 @@
     (call-with-string-output-port
       (lambda (p) (display x p)))))
 
-(define-syntax project
-  (syntax-rules ()
-    ((_ (x ...) g g* ...)
-     (lambdag@ (c : S D A T)
-       (let ((x (walk* x S)) ...)
-         ((fresh () g g* ...) c))))))
+(define anyvar?
+  (lambda (u r)
+    (cond
+      ((pair? u)
+       (or (anyvar? (car u) r)
+           (anyvar? (cdr u) r)))
+      (else (var? (walk u r))))))
 
-(define-syntax conda
-  (syntax-rules ()
-    ((_ (g0 g ...) (g1 g^ ...) ...)
-     (lambdag@ (c)
-       (inc
-         (ifa ((g0 c) g ...)
-              ((g1 c) g^ ...) ...))))))
+(define member*
+  (lambda (u v)
+    (cond
+      ((equal? u v) #t)
+      ((pair? v)
+       (or (member* u (car v)) (member* u (cdr v))))
+      (else #f))))
 
-(define-syntax ifa
-  (syntax-rules ()
-    ((_) (mzero))
-    ((_ (e g ...) b ...)
-     (let loop ((c-inf e))
-       (case-inf c-inf
-         (() (ifa b ...))
-         ((f) (inc (loop (f))))
-         ((a) (bind* c-inf g ...))
-         ((a f) (bind* c-inf g ...)))))))
+(define drop-N-b/c-const
+  (lambdar@ (c : S D Y N T)
+    (let ((const? (lambda (n)
+                    (not (var? (walk n S))))))
+      (cond
+        ((find const? N) =>
+           (lambda (n) `(,S ,D ,Y ,(remq1 n N) ,T)))
+        (else c)))))
 
-(define-syntax condu
-  (syntax-rules ()
-    ((_ (g0 g ...) (g1 g^ ...) ...)
-     (lambdag@ (c)
-       (inc
-         (ifu ((g0 c) g ...)
-              ((g1 c) g^ ...) ...))))))
+(define drop-Y-b/c-const
+  (lambdar@ (c : S D Y N T)
+    (let ((const? (lambda (y)
+                    (not (var? (walk y S))))))
+      (cond
+        ((find const? Y) =>
+           (lambda (y) `(,S ,D ,(remq1 y Y) ,N ,T)))
+        (else c)))))
 
-(define-syntax ifu
-  (syntax-rules ()
-    ((_) (mzero))
-    ((_ (e g ...) b ...)
-     (let loop ((c-inf e))
-       (case-inf c-inf
-         (() (ifu b ...))
-         ((f) (inc (loop (f))))
-         ((c) (bind* c-inf g ...))
-         ((c f) (bind* (unit c) g ...)))))))
+(define remq1
+  (lambda (elem ls)
+    (cond
+      ((null? ls) '())
+      ((eq? (car ls) elem) (cdr ls))
+      (else (cons (car ls) (remq1 elem (cdr ls)))))))
 
-(define onceo (lambda (g) (condu (g))))
+(define same-var?
+  (lambda (v)
+    (lambda (v^)
+      (and (var? v) (var? v^) (var-eq? v v^)))))
+
+(define find-dup
+  (lambda (f S)
+    (lambda (set)
+      (let loop ((set^ set))
+        (cond
+          ((null? set^) #f)
+          (else
+           (let ((elem (car set^)))
+             (let ((elem^ (walk elem S)))
+               (cond
+                 ((find (lambda (elem^^)
+                          ((f elem^) (walk elem^^ S)))
+                        (cdr set^))
+                  elem)
+                 (else (loop (cdr set^))))))))))))
+
+(define drop-N-b/c-dup-var
+  (lambdar@ (c : S D Y N T)
+    (cond
+      (((find-dup same-var? S) N) =>
+       (lambda (n) `(,S ,D ,Y ,(remq1 n N) ,T)))
+      (else c))))
+
+(define drop-Y-b/c-dup-var
+  (lambdar@ (c : S D Y N T)
+    (cond
+      (((find-dup same-var? S) Y) =>
+       (lambda (y)
+         `(,S ,D ,(remq1 y Y) ,N ,T)))
+      (else c))))
+
+(define var-type-mismatch?
+  (lambda (S Y N t1^ t2^)
+    (cond
+      ((num? S N t1^) (not (num? S N t2^)))
+      ((sym? S Y t1^) (not (sym? S Y t2^)))
+      (else #f))))
+
+(define term-ununifiable?
+  (lambda (S Y N t1 t2)
+    (let ((t1^ (walk t1 S))
+          (t2^ (walk t2 S)))
+      (cond
+        ((or (untyped-var? S Y N t1^) (untyped-var? S Y N t2^)) #f)
+        ((var? t1^) (var-type-mismatch? S Y N t1^ t2^))
+        ((var? t2^) (var-type-mismatch? S Y N t2^ t1^))
+        ((and (pair? t1^) (pair? t2^))
+         (or (term-ununifiable? S Y N (car t1^) (car t2^))
+             (term-ununifiable? S Y N (cdr t1^) (cdr t2^))))
+        (else (not (eqv? t1^ t2^)))))))
+
+(define T-term-ununifiable?
+  (lambda (S Y N)
+    (lambda (t1)
+      (let ((t1^ (walk t1 S)))
+        (letrec
+            ((t2-check
+              (lambda (t2)
+                (let ((t2^ (walk t2 S)))
+                  (if (pair? t2^)
+                    (and
+                       (term-ununifiable? S Y N t1^ t2^)
+                       (t2-check (car t2^))
+                       (t2-check (cdr t2^)))
+                    (term-ununifiable? S Y N t1^ t2^))))))
+          t2-check)))))
+
+(define num?
+  (lambda (S N n)
+    (let ((n (walk n S)))
+      (cond
+        ((var? n) (tagged? S N n))
+        (else (number? n))))))
+
+(define sym?
+  (lambda (S Y y)
+    (let ((y (walk y S)))
+      (cond
+        ((var? y) (tagged? S Y y))
+        (else (symbol? y))))))
+
+(define drop-T-b/c-Y-and-N
+  (lambdar@ (c : S D Y N T)
+    (let ((drop-t? (T-term-ununifiable? S Y N)))
+      (cond
+        ((find (lambda (t) ((drop-t? (lhs t)) (rhs t))) T) =>
+         (lambda (t) `(,S ,D ,Y ,N ,(remq1 t T))))
+        (else c)))))
+
+(define move-T-to-D-b/c-t2-atom
+  (lambdar@ (c : S D Y N T)
+    (cond
+      ((exists (lambda (t)
+               (let ((t2^ (walk (rhs t) S)))
+                 (cond
+                   ((and (not (untyped-var? S Y N t2^))
+                         (not (pair? t2^)))
+                    (let ((T (remq1 t T)))
+                      `(,S ((,t) . ,D) ,Y ,N ,T)))
+                   (else #f))))
+             T))
+      (else c))))
+
+(define terms-pairwise=?
+  (lambda (pr-a^ pr-d^ t-a^ t-d^ S)
+    (or
+     (and (term=? pr-a^ t-a^ S)
+          (term=? pr-d^ t-a^ S))
+     (and (term=? pr-a^ t-d^ S)
+          (term=? pr-d^ t-a^ S)))))
+
+(define T-superfluous-pr?
+  (lambda (S Y N T)
+    (lambda (pr)
+      (let ((pr-a^ (walk (lhs pr) S))
+            (pr-d^ (walk (rhs pr) S)))
+        (cond
+          ((exists
+               (lambda (t)
+                 (let ((t-a^ (walk (lhs t) S))
+                       (t-d^ (walk (rhs t) S)))
+                   (terms-pairwise=? pr-a^ pr-d^ t-a^ t-d^ S)))
+             T)
+           (for-all
+            (lambda (t)
+              (let ((t-a^ (walk (lhs t) S))
+                    (t-d^ (walk (rhs t) S)))
+                (or
+                 (not (terms-pairwise=? pr-a^ pr-d^ t-a^ t-d^ S))
+                 (untyped-var? S Y N t-d^)
+                 (pair? t-d^))))
+            T))
+          (else #f))))))
+
+(define drop-from-D-b/c-T
+  (lambdar@ (c : S D Y N T)
+    (cond
+      ((find
+           (lambda (d)
+             (exists
+                 (T-superfluous-pr? S Y N T)
+               d))
+         D) =>
+         (lambda (d) `(,S ,(remq1 d D) ,Y ,N ,T)))
+      (else c))))
+
+(define drop-t-b/c-t2-occurs-t1
+  (lambdar@ (c : S D Y N T)
+    (cond
+      ((find (lambda (t)
+               (let ((t-a^ (walk (lhs t) S))
+                     (t-d^ (walk (rhs t) S)))
+                 (mem-check t-d^ t-a^ S)))
+             T) =>
+             (lambda (t)
+               `(,S ,D ,Y ,N ,(remq1 t T))))
+      (else c))))
+
+(define split-t-move-to-d-b/c-pair
+  (lambdar@ (c : S D Y N T)
+    (cond
+      ((exists
+         (lambda (t)
+           (let ((t2^ (walk (rhs t) S)))
+             (cond
+               ((pair? t2^) (let ((ta `(,(lhs t) . ,(car t2^)))
+                                  (td `(,(lhs t) . ,(cdr t2^))))
+                              (let ((T `(,ta ,td . ,(remq1 t T))))
+                                `(,S ((,t) . ,D) ,Y ,N ,T))))
+               (else #f))))
+         T))
+      (else c))))
+
+(define find-d-conflict
+  (lambda (S Y N)
+    (lambda (D)
+      (find
+       (lambda (d)
+	 (exists (lambda (pr)
+		   (term-ununifiable? S Y N (lhs pr) (rhs pr)))
+		 d))
+       D))))
+
+(define drop-D-b/c-Y-or-N
+  (lambdar@ (c : S D Y N T)
+    (cond
+      (((find-d-conflict S Y N) D) =>
+       (lambda (d) `(,S ,(remq1 d D) ,Y ,N ,T)))
+      (else c))))
+
+(define cycle
+  (lambdar@ (c)
+    (let loop ((c^ c)
+               (fns^ (LOF))
+               (n (length (LOF))))
+      (cond
+        ((zero? n) c^)
+        ((null? fns^) (loop c^ (LOF) n))
+        (else
+         (let ((c^^ ((car fns^) c^)))
+           (cond
+             ((not (eq? c^^ c^))
+              (loop c^^ (cdr fns^) (length (LOF))))
+             (else (loop c^ (cdr fns^) (sub1 n))))))))))
+
+(define mem-check
+  (lambda (u t S)
+    (let ((t (walk t S)))
+      (cond
+        ((pair? t)
+         (or (term=? u t S)
+             (mem-check u (car t) S)
+             (mem-check u (cdr t) S)))
+        (else (term=? u t S))))))
+
+(define term=?
+  (lambda (u t S)
+    (let-values (((S added) (unify u t (subst-with-scope
+                                         S
+                                         nonlocal-scope))))
+      (and S (null? added)))))
+
+(define ground-non-<type>?
+  (lambda (pred)
+    (lambda (u S)
+      (let ((u (walk u S)))
+        (cond
+          ((var? u) #f)
+          (else (not (pred u))))))))
+
+(define ground-non-symbol?
+  (ground-non-<type>? symbol?))
+
+(define ground-non-number?
+  (ground-non-<type>? number?))
+
+(define succeed (== #f #f))
+
+(define fail (== #f #t))
+
+(define ==fail-check
+  (lambda (S0 D Y N T)
+    (let ([S0 (subst-with-scope S0 nonlocal-scope)])
+      (cond
+        ((atomic-fail-check S0 Y ground-non-symbol?) #t)
+        ((atomic-fail-check S0 N ground-non-number?) #t)
+        ((symbolo-numbero-fail-check S0 Y N) #t)
+        ((=/=-fail-check S0 D) #t)
+        ((absento-fail-check S0 T) #t)
+        (else #f)))))
+
+(define atomic-fail-check
+  (lambda (S A pred)
+    (exists (lambda (a) (pred (walk a S) S)) A)))
+
+(define symbolo-numbero-fail-check
+  (lambda (S A N)
+    (let ((N (map (lambda (n) (walk n S)) N)))
+      (exists (lambda (a) (exists (same-var? (walk a S)) N))
+        A))))
+
+(define absento-fail-check
+  (lambda (S T)
+    (exists (lambda (t) (mem-check (lhs t) (rhs t) S)) T)))
+
+(define =/=-fail-check
+  (lambda (S D)
+    (exists (d-fail-check S) D)))
+
+(define d-fail-check
+  (lambda (S)
+    (lambda (d)
+      (let-values (((S added) (unify* d S)))
+        (and S (null? added))))))
+
+(define reify+
+  (lambda (v R D Y N T)
+    (form (walk* v R)
+          (walk* D R)
+          (walk* Y R)
+          (walk* N R)
+          (rem-subsumed-T (walk* T R)))))
+
+(define form
+  (lambda (v D Y N T)
+    (let ((fd (sort-D D))
+          (fy (sorter Y))
+          (fn (sorter N))
+          (ft (sorter T)))
+      (let ((fd (if (null? fd) fd
+                    (let ((fd (drop-dot-D fd)))
+                      `((=/= . ,fd)))))
+            (fy (if (null? fy) fy `((sym . ,fy))))
+            (fn (if (null? fn) fn `((num . ,fn))))
+            (ft (if (null? ft) ft
+                    (let ((ft (drop-dot ft)))
+                      `((absento . ,ft))))))
+        (cond
+          ((and (null? fd) (null? fy)
+                (null? fn) (null? ft))
+           v)
+          (else (append `(,v) fd fn fy ft)))))))
+
+(define sort-D
+  (lambda (D)
+    (sorter
+     (map sort-d D))))
+
+(define sort-d
+  (lambda (d)
+    (list-sort
+       (lambda (x y)
+         (lex<=? (car x) (car y)))
+       (map sort-pr d))))
+
+(define drop-dot-D
+  (lambda (D)
+    (map drop-dot D)))
+
+(define lex<-reified-name?
+  (lambda (r)
+    (char<?
+     (string-ref
+      (datum->string r) 0)
+     #\_)))
+
+(define sort-pr
+  (lambda (pr)
+    (let ((l (lhs pr))
+          (r (rhs pr)))
+      (cond
+        ((lex<-reified-name? r) pr)
+        ((lex<=? r l) `(,r . ,l))
+        (else pr)))))
+
+(define rem-subsumed
+  (lambda (D)
+    (let rem-subsumed ((D D) (d^* '()))
+      (cond
+        ((null? D) d^*)
+        ((or (subsumed? (car D) (cdr D))
+             (subsumed? (car D) d^*))
+         (rem-subsumed (cdr D) d^*))
+        (else (rem-subsumed (cdr D)
+                (cons (car D) d^*)))))))
+
+(define subsumed?
+  (lambda (d d*)
+    (cond
+      ((null? d*) #f)
+      (else
+        (let-values (((S ignore) (unify* d (subst
+                                             empty-subst-map
+                                             nonlocal-scope))))
+          (let-values (((S+ added) (unify* (car d*) S)))
+            (or
+              (and S+ (null? added))
+              (subsumed? d (cdr d*)))))))))
+
+
+
+(define rem-xx-from-d
+  (lambdar@ (c : S D Y N T)
+    (let ((D (walk* D S)))
+      (remp not
+            (map (lambda (d)
+                   (let-values (((S0 ignore) (unify* d S)))
+                     (cond
+                       ((not S0) #f)
+                       ((==fail-check S0 '() Y N T) #f)
+                       (else
+                         (let-values
+                           (((S added)
+                             (unify* d (subst empty-subst-map
+                                              nonlocal-scope))))
+                           added)))))
+                 D)))))
+
+(define rem-subsumed-T
+  (lambda (T)
+    (let rem-subsumed ((T T) (T^ '()))
+      (cond
+        ((null? T) T^)
+        (else
+         (let ((lit (lhs (car T)))
+               (big (rhs (car T))))
+           (cond
+             ((or (subsumed-T? lit big (cdr T))
+                  (subsumed-T? lit big T^))
+              (rem-subsumed (cdr T) T^))
+             (else (rem-subsumed (cdr T)
+                     (cons (car T) T^))))))))))
+
+(define subsumed-T?
+  (lambda (lit big T)
+    (cond
+      ((null? T) #f)
+      (else
+       (let ((lit^ (lhs (car T)))
+             (big^ (rhs (car T))))
+         (or
+           (and (eq? big big^) (member* lit^ lit))
+           (subsumed-T? lit big (cdr T))))))))
+
+(define LOF
+  (lambda ()
+    `(,drop-N-b/c-const ,drop-Y-b/c-const ,drop-Y-b/c-dup-var
+      ,drop-N-b/c-dup-var ,drop-D-b/c-Y-or-N ,drop-T-b/c-Y-and-N
+      ,move-T-to-D-b/c-t2-atom ,split-t-move-to-d-b/c-pair
+      ,drop-from-D-b/c-T ,drop-t-b/c-t2-occurs-t1)))
+
