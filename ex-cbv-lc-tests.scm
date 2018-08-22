@@ -35,3 +35,7 @@
       (lambda (x) x))
      (=/= ((_.0 _.1)) ((_.0 lambda)))
      (sym _.0 _.1 _.2))))
+
+(test-check "meta 1 CBV LC"
+  (run* (q) ((vanilla lc-clause) `(eval-expo ((lambda (x) (x x)) (lambda (x) x)) () ,q)))
+  '((closure x x ())))
