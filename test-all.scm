@@ -8,4 +8,5 @@
 (load "ex-ndfa-tests.scm")
 (load "preduce-tests.scm")
 (load "ex-evalo-tests.scm")
-
+(load "ex-cbv-lc-tests.scm")
+(load "ex-quines-tests.scm")
