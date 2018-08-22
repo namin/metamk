@@ -2,8 +2,13 @@
   (lambda (expr val)
     (eval-expo expr '() val)))
 
+(defrel (l== x y)
+  ((l==-clause ==))
+  ()
+  (== x y))
+
 (defrel (eval-expo expr env val)
-  ((eval-expo-clause eval-expo not-in-envo lookupo == symbolo))
+  ((eval-expo-clause eval-expo not-in-envo lookupo == l== symbolo))
   ()
   (conde
     ((fresh (rator rand x body env^ a)
@@ -14,7 +19,7 @@
     ((fresh (x body)
        (== `(lambda (,x) ,body) expr)
        (symbolo x)
-       (== `(closure ,x ,body ,env) val)
+       (l== `(closure ,x ,body ,env) val)
        (not-in-envo 'lambda env)))
     ((symbolo expr) (lookupo expr env val))))
 
@@ -57,4 +62,5 @@
     ((eval-expo-clause a b))
     ((not-in-envo-clause a b))
     ((lookupo-clause a b))
+    ((l==-clause a b))
     ((mk-clause a b))))
