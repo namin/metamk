@@ -1,4 +1,4 @@
-(load "mk.scm")
+(load "mk2.scm")
 (load "utils.scm")
 (load "vanilla.scm")
 (load "meta.scm")

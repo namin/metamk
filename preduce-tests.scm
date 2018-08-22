@@ -1,4 +1,4 @@
-(load "mk.scm")
+(load "mk2.scm")
 (load "meta.scm")
 (load "ex-ndfa.scm")
 (load "preduce.scm")
