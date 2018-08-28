@@ -2,6 +2,7 @@
 (load "meta.scm")
 (load "ex-ndfa.scm")
 (load "preduce.scm")
+(load "refl.scm")
 (load "test-check.scm")
 
 (define ndfa-program-obj
@@ -9,15 +10,17 @@
     (fresh (a b)
       (== q  (list '<- a b))
       (ndfa-pclause a b))))
-;; we need the variables...
+(test-check "pclause"
+  ndfa-program-obj
+  '((<- (accept _.0) ((initial _.1) (accept2 _.0 _.1)))
+    (<- (accept2 () _.0) ((final _.0)))
+    (<- (accept2 (_.0 . _.1) _.2)
+        ((delta _.2 _.0 _.3) (accept2 _.1 _.3)))))
+(define (ndfa-program-q p)
+  ((reify-prog ndfa-program-obj) p))
 (define (ndfa-program p)
-  (fresh (_.10 _.11 _.20 _.30 _.31 _.32 _.33)
-    (== p
-        (list
-         `(<- (accept ,_.10) ((initial ,_.11) (accept2 ,_.10 ,_.11)))
-         `(<- (accept2 () ,_.20) ((final ,_.20)))
-         `(<- (accept2 (,_.30 . ,_.31) ,_.32)
-              ((delta ,_.32 ,_.30 ,_.33) (accept2 ,_.31 ,_.33)))))))
+  ((eval `(lambda (p) ,(ndfa-program-q 'p)))
+   p))
 
 (test-check "sanity-check-nda-program"
   (run 1 (p)
