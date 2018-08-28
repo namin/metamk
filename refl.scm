@@ -52,3 +52,12 @@
       (lambda (p)
         (list 'fresh vs
               (list '== p (cons 'list (reverse cs))))))))
+
+(define (refl-prog pclause)
+  (let ((program-obj
+         (run* (q)
+           (fresh (a b)
+             (== q  (list '<- a b))
+             (pclause a b)))))
+    (let ((q (reify-prog program-obj)))
+      (eval `(lambda (p) ,(q 'p))))))
