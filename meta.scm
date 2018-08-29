@@ -5,7 +5,7 @@
     ((_ (x* ...) g)
      (fresh (x* ...) g))))
 
-(define-syntax defrel
+(define-syntax define-rel
   (syntax-rules ()
     ((_ (id a* ...) ((cid* r* ...) ...) (x* ...) body)
      (begin

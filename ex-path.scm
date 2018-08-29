@@ -1,4 +1,4 @@
-(defrel
+(define-rel
   (patho x y)
   ((patho-clause patho))
   ()

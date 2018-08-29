@@ -4,9 +4,11 @@
 (load "cycler-tests.scm")
 (load "prooftree-tests.scm")
 (load "proofdebug-tests.scm")
+(load "preduce-tests.scm")
+(load "refl-tests.scm")
 (load "ex-stlc-tests.scm")
 (load "ex-ndfa-tests.scm")
-(load "preduce-tests.scm")
 (load "ex-evalo-tests.scm")
 (load "ex-cbv-lc-tests.scm")
 (load "ex-quines-tests.scm")
+

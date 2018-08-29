@@ -64,7 +64,7 @@
             ((== `(alt ,re1 ,re2) pat)
              (== `(rep ,pat) out))))))]))
 
-(defrel
+(define-rel
   (regexp-matcho pattern data out)
   ((regexp-matcho-clause regexp-matcho deltao derivo))
   ()
@@ -75,7 +75,7 @@
        (derivo pattern a res)
        (regexp-matcho res d out)))))
 
-(defrel
+(define-rel
   (deltao re out)
   ((deltao-clause deltao))
   ()
@@ -106,7 +106,7 @@
        (deltao re1 res1)
        (deltao re2 res2))]))
 
-(defrel
+(define-rel
   (derivo re c out)
   ((derivo-clause derivo deltao))
   ()

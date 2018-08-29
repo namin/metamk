@@ -2,12 +2,12 @@
   (lambda (expr val)
     (eval-expo expr '() val)))
 
-(defrel (l== x y)
+(define-rel (l== x y)
   ((l==-clause ==))
   ()
   (== x y))
 
-(defrel (eval-expo expr env val)
+(define-rel (eval-expo expr env val)
   ((eval-expo-clause eval-expo not-in-envo lookupo == l== symbolo))
   ()
   (conde
@@ -23,7 +23,7 @@
        (not-in-envo 'lambda env)))
     ((symbolo expr) (lookupo expr env val))))
 
-(defrel (not-in-envo x env)
+(define-rel (not-in-envo x env)
   ((not-in-envo-clause not-in-envo == =/=))
   ()
   (conde
@@ -33,7 +33,7 @@
        (=/= y x)
        (not-in-envo x rest)))))
 
-(defrel (lookupo x env t)
+(define-rel (lookupo x env t)
   ((lookupo-clause lookupo == =/=))
   ()
   (conde

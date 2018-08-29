@@ -1,4 +1,4 @@
-(defrel
+(define-rel
   (pluso a b c)
   ((pluso-clause pluso))
   ()

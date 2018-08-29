@@ -3,7 +3,7 @@
 ;; Program 17.1
 ;; An interpreter for a nondeterministic finite automaton (NDFA)
 
-(defrel
+(define-rel
   (accept xs)
   ((accept-clause accept accept2 initial delta final))
   ()
@@ -11,7 +11,7 @@
     (initial q)
     (accept2 xs q)))
 
-(defrel
+(define-rel
   (accept2 xs q)
   ((accept2-clause accept2 initial delta final))
   ()
@@ -26,19 +26,19 @@
 ;; Program 17.2
 ;; An NDFA that accepts that language (ab)*
 
-(defrel
+(define-rel
   (initial q)
   ((initial-clause initial))
   ()
   (== q 'q0))
 
-(defrel
+(define-rel
   (final q)
   ((final-clause final))
   ()
   (== q 'q0))
 
-(defrel
+(define-rel
   (delta qa c qb)
   ((delta-clause delta))
   ()

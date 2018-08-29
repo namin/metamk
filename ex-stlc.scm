@@ -1,4 +1,4 @@
-(defrel
+(define-rel
   (!-o gamma expr type)
   ((!-o-clause-i !-o) (!-o-full-clause-i !-o lookupo))
   (rule-case)
@@ -14,7 +14,7 @@
        (!-o gamma e2 T1))
      (== rule-case 'app))))
 
-(defrel
+(define-rel
   (!!-o gamma expr type)
   ((!!-o-clause-i !!-o) (!!-o-full-clause-i !!-o lookupo))
   (rule-case)
