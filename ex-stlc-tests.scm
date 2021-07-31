@@ -4,6 +4,16 @@
 (load "ex-stlc.scm")
 (load "test-check.scm")
 
+(test-check "slides-!-o-type-inhabiter"
+  (run 3 (q) (eigen (alpha) (!-o '() q `(,alpha -> ,alpha))))
+  '(((lambda (_.0) _.0) (sym _.0))
+    ((lambda (_.0) ((lambda (_.1) _.1) _.0)) (sym _.0 _.1))
+    (((lambda (_.0) _.0) (lambda (_.1) _.1)) (sym _.0 _.1))))
+
+(test-check "slides-!-o-self-app-failure"
+  (run 1 (q) (!-o '() '(lambda (x) (x x)) q))
+  '())
+
 (test-check "!-o-identity-1"
   (run 10 (q) (eigen (alpha) (!-o '() q `(,alpha -> ,alpha))))
   '(((lambda (_.0) _.0) (sym _.0))
