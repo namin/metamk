@@ -49,10 +49,10 @@
      (!!-o gamma e3 T)
      (== rule-case 'if))))
 
-(define (lookupo binding rho)
-  (matche (binding rho)
+(define (lookupo binding gamma)
+  (matche (binding gamma)
     (((,x : ,v) ((,x : ,v) . ,_)))
-    (((,x : ,v) ((,y : ,_) . ,rho1)) (=/= x y) (lookupo binding rho1))))
+    (((,x : ,v) ((,y : ,_) . ,gamma1)) (=/= x y) (lookupo binding gamma1))))
 
 (define (to-clause clause-i)
   (lambda (head tail)
