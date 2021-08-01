@@ -1,5 +1,4 @@
-(define-rel
-  (patho x y)
+(define-rel (patho x y)
   ((patho-clause patho))
   ()
   (conde
