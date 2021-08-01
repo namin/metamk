@@ -49,12 +49,17 @@
 
 (run* (q)
   (fresh (x y t)
+    (== x 'a)
     (== q `(,x ,y ,t))
     ((cycler patho-clause) `(patho ,x ,y) t)))
 '((a b ((patho a b)))
   (a c ((patho b c) (patho a c)))
   (a a ((patho c a) (patho b a) (patho a a))))
 
+(run* (q)
+  (fresh (x y t)
+    (== q `(,x ,y ,t))
+    ((cycler patho-clause) `(patho ,x ,y) t)))
 '((a b ((patho a b))) (b c ((patho b c))) (c a ((patho c a)))
   (a c ((patho b c) (patho a c)))
   (c b ((patho a b) (patho c b)))
