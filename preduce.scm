@@ -1,6 +1,8 @@
 ;; Inspired by Program 18.3 of The Art of Prolog
 ;; A simple partial reduction system
 
+(load "appendo.scm")
+
 (define (preduce* clause)
   (define (solve* goals residues)
     (conde
@@ -28,11 +30,3 @@
               (solve* gs rs))))))))
   solve*)
 
-(define (appendo xs ys zs)
-  (conde
-    ((== xs '())
-     (== ys zs))
-    ((fresh (x xr zr)
-       (== (cons x xr) xs)
-       (== (cons x zr) zs)
-       (appendo xr ys zr)))))

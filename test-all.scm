@@ -6,6 +6,7 @@
 (load "proofdebug-tests.scm")
 (load "preduce-tests.scm")
 (load "refl-tests.scm")
+(load "ebg-tests.scm")
 (load "ex-stlc-tests.scm")
 (load "ex-ndfa-tests.scm")
 (load "ex-evalo-tests.scm")
